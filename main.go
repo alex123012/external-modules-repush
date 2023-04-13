@@ -85,8 +85,8 @@ func parseFlags() {
 		flag.PrintDefaults()
 	}
 
-	flag.StringVar(&pullRepo, "pull-registry", pullRepo, "registry address, that contains external modules")
-	flag.StringVar(&pushRepo, "push-registry", pushRepo, "registry address to push external module from pull repo")
+	flag.StringVar(&pullRepo, "pull-registry", pullRepo, "registry address, that contains external modules\n(you should be logged in to registry via docker login)")
+	flag.StringVar(&pushRepo, "push-registry", pushRepo, "registry address to push external module from pull repo\n(you should be logged in to registry via docker login)")
 	flag.StringVar(&moduleName, "module", moduleName, "external module name")
 	flag.StringVar(&releaseChannel, "release", releaseChannel, "release channel to use")
 

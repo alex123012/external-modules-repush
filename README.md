@@ -18,6 +18,7 @@ Usage of external-modules-transfer:
         use http protocol for pull registry
   -pull-registry string
         registry address, that contains external modules
+        (you should be logged in to registry via docker login)
   -push-ca string
         ca certificate for push registry
   -push-disable-auth
@@ -26,6 +27,7 @@ Usage of external-modules-transfer:
         use http protocol for push registry
   -push-registry string
         registry address to push external module from pull repo
+        (you should be logged in to registry via docker login)
   -release string
         release channel to use (default "alpha")
 ```
@@ -38,5 +40,9 @@ make build # or use `make build-macos` if you are on mac
 ```
 # Example
 ```bash
+docker login registry.exmaple-pull.com/external-modules
+...
+docker login registry.example-push.com/deckhouse-external-modules
+....
 external-modules-transfer --module external-module-name --pull-registry "registry.exmaple-pull.com/external-modules" --push-registry "registry.example-push.com/deckhouse-external-modules" --release alpha
 ```
