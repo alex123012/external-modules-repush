@@ -17,12 +17,13 @@ var (
 	pullRepo       string
 	pushRepo       string
 
-	pullInsecure    bool
-	pushInsecure    bool
-	pullDisableAuth bool
-	pushDisableAuth bool
-	pullRegistryCa  string
-	pushRegistryCa  string
+	pullInsecure          bool
+	pushInsecure          bool
+	pullDisableAuth       bool
+	pushDisableAuth       bool
+	pullRunImageUseDigest bool
+	pullRegistryCa        string
+	pushRegistryCa        string
 )
 
 type image struct {
@@ -49,7 +50,15 @@ func main() {
 		log.Fatal(fmt.Errorf("fetch release metadata error: %v", err))
 	}
 
-	moduleImage, runImages, err := cr.FetchModuleImages(pullRepo, moduleName, moduleVersion, pullRepoOptions...)
+	moduleImage, err := cr.FetchModuleImages(pullRepo, moduleName, moduleVersion, pullRepoOptions...)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if pullRunImageUseDigest {
+		pullRepoOptions = append(pullRepoOptions, cr.WithUseDigest())
+	}
+
+	runImages, err := cr.FetchModuleRunImages(pullRepo, moduleName, moduleImage, pullRepoOptions...)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -72,10 +81,10 @@ func main() {
 		},
 	}
 
-	for i, runImage := range runImages {
+	for tag, runImage := range runImages {
 		imagesToPush = append(imagesToPush, image{
 			repo:  path.Join(pushRepo, moduleName),
-			tag:   fmt.Sprintf("%s-%d", moduleName, i),
+			tag:   tag,
 			image: runImage,
 		})
 	}
@@ -123,6 +132,13 @@ func parseFlags() {
 
 	flag.StringVar(&pullRegistryCa, "pull-ca", pullRegistryCa, "ca certificate for pull registry")
 	flag.StringVar(&pushRegistryCa, "push-ca", pushRegistryCa, "ca certificate for push registry")
+
+	flag.BoolVar(&pullRunImageUseDigest, "pull-run-image-use-digest", pullRunImageUseDigest,
+		`use digests instead of tags for pulling images
+  if flag is set - pushing images to 'push' repo will be with
+  keys (image names) from images_digests.json file from module bundle image.
+  This would prevent images cleanup in 'push' registry`,
+	)
 
 	flag.Parse()
 	switch "" {

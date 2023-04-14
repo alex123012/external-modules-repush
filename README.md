@@ -19,6 +19,11 @@ Usage of external-modules-transfer:
   -pull-registry string
         registry address, that contains external modules
         (you should be logged in to registry via docker login)
+  -pull-run-image-use-digest
+        use digests instead of tags for pulling images
+          if flag is set - pushing images to 'push' repo will be with
+          keys (image names) from images_digests.json file from module bundle image.
+          This would prevent images cleanup in 'push' registry
   -push-ca string
         ca certificate for push registry
   -push-disable-auth

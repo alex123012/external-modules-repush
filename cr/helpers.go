@@ -50,20 +50,29 @@ func FetchModuleListingImage(repo, moduleName string, opts ...Option) (v1.Image,
 	return FetchImage(repo, moduleName, opts...)
 }
 
-func FetchModuleImages(repo, moduleName, moduleVersion string, opts ...Option) (v1.Image, []v1.Image, error) {
+func FetchModuleImages(repo, moduleName, moduleVersion string, opts ...Option) (v1.Image, error) {
 	imageRepo := path.Join(repo, moduleName)
 	moduleImage, err := FetchImage(imageRepo, moduleVersion, opts...)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	runImages, err := fetchModuleRunImages(imageRepo, moduleImage, opts...)
-	return moduleImage, runImages, err
+	return moduleImage, err
 }
 
-func fetchModuleRunImages(repo string, img v1.Image, opts ...Option) ([]v1.Image, error) {
+func FetchModuleRunImages(repo, moduleName string, img v1.Image, opts ...Option) (map[string]v1.Image, error) {
+	regCli, err := newClient(path.Join(repo, moduleName), opts...)
+	if err != nil {
+		return nil, fmt.Errorf("error generating client for registry: %v", err)
+	}
+
+	imagesFileName := "images_digests.json"
+	if regCli.options.useDigest {
+		imagesFileName = "images_digests.json"
+	}
+
 	buf := bytes.NewBuffer(nil)
 	if err := untarFile(mutate.Extract(img), func(hdr *tar.Header, tr *tar.Reader) (bool, error) {
-		if hdr.Name == "images_digests.json" {
+		if hdr.Name == imagesFileName {
 			_, err := io.Copy(buf, tr)
 			if err != nil {
 				return false, err
@@ -74,22 +83,23 @@ func fetchModuleRunImages(repo string, img v1.Image, opts ...Option) ([]v1.Image
 		return nil, err
 	}
 
-	var digestsMap map[string]string
-	if err := json.Unmarshal(buf.Bytes(), &digestsMap); err != nil {
+	var TagsOrDigestsMap map[string]string
+	if err := json.Unmarshal(buf.Bytes(), &TagsOrDigestsMap); err != nil {
 		return nil, err
 	}
 
-	newOpts := make([]Option, len(opts))
-	copy(newOpts, opts)
-	newOpts = append(newOpts, WithUseDigest())
-
-	runImages := make([]v1.Image, 0)
-	for _, digest := range digestsMap {
-		runImage, err := FetchImage(repo, digest, newOpts...)
+	runImages := make(map[string]v1.Image, len(TagsOrDigestsMap))
+	for name, tagOrDigest := range TagsOrDigestsMap {
+		runImage, err := regCli.Image(tagOrDigest)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("fetch image error: %v", err)
 		}
-		runImages = append(runImages, runImage)
+
+		if regCli.options.useDigest {
+			runImages[name] = runImage
+			continue
+		}
+		runImages[tagOrDigest] = runImage
 	}
 	return runImages, nil
 }
