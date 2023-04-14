@@ -6,28 +6,36 @@ type registryOptions struct {
 	ca          string
 	useHTTP     bool
 	withoutAuth bool
+	useDigest   bool
 	authConfig  authn.Keychain
 }
 
-type option func(options *registryOptions)
+type Option func(options *registryOptions)
 
 // WithCA use custom CA certificate
-func WithCA(ca string) option {
+func WithCA(ca string) Option {
 	return func(options *registryOptions) {
 		options.ca = ca
 	}
 }
 
 // WithInsecureSchema use http schema instead of https
-func WithInsecureSchema(insecure bool) option {
+func WithInsecureSchema() Option {
 	return func(options *registryOptions) {
-		options.useHTTP = insecure
+		options.useHTTP = true
 	}
 }
 
 // WithDisabledAuth don't use authConfig
-func WithDisabledAuth() option {
+func WithDisabledAuth() Option {
 	return func(options *registryOptions) {
 		options.withoutAuth = true
+	}
+}
+
+// WithUseDigest use digest except of tag
+func WithUseDigest() Option {
+	return func(options *registryOptions) {
+		options.useDigest = true
 	}
 }

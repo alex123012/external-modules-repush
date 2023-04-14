@@ -22,7 +22,7 @@ type client struct {
 	options     *registryOptions
 }
 
-func newClient(repo string, opts ...option) (*client, error) {
+func newClient(repo string, opts ...Option) (*client, error) {
 	regOpts := &registryOptions{}
 
 	for _, opt := range opts {
@@ -86,7 +86,15 @@ func (r *client) parseImageReference(tag string) (name.Reference, error) {
 	if r.options.useHTTP {
 		nameOpts = append(nameOpts, name.Insecure)
 	}
-	ref, err := name.ParseReference(r.registryURL+":"+tag, nameOpts...)
+
+	var ref name.Reference
+	var err error
+	switch r.options.useDigest {
+	case true:
+		ref, err = name.ParseReference(r.registryURL+"@"+tag, nameOpts...)
+	case false:
+		ref, err = name.ParseReference(r.registryURL+":"+tag, nameOpts...)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("parsing image ref %q with tag %s: %w", r.registryURL, tag, err)
 	}

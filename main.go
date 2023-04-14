@@ -25,15 +25,21 @@ var (
 	pushRegistryCa  string
 )
 
+type image struct {
+	repo  string
+	tag   string
+	image v1.Image
+}
+
 func main() {
 	parseFlags()
-
-	moduleListingImage, err := cr.FetchImage(pullRepo, moduleName)
+	pullRepoOptions := parseOptions(pullInsecure, pullDisableAuth, pullRegistryCa)
+	moduleListingImage, err := cr.FetchModuleListingImage(pullRepo, moduleName, pullRepoOptions...)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	moduleReleaseImage, err := cr.FetchModuleReleaseImage(pullRepo, moduleName, releaseChannel)
+	moduleReleaseImage, err := cr.FetchModuleReleaseImage(pullRepo, moduleName, releaseChannel, pullRepoOptions...)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -43,16 +49,12 @@ func main() {
 		log.Fatal(fmt.Errorf("fetch release metadata error: %v", err))
 	}
 
-	moduleImage, err := cr.FetchModuleImage(pullRepo, moduleName, moduleVersion)
+	moduleImage, runImages, err := cr.FetchModuleImages(pullRepo, moduleName, moduleVersion, pullRepoOptions...)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	imagesToPush := []struct {
-		repo  string
-		tag   string
-		image v1.Image
-	}{
+	imagesToPush := []image{
 		{
 			repo:  pushRepo,
 			tag:   moduleName,
@@ -70,11 +72,34 @@ func main() {
 		},
 	}
 
+	for i, runImage := range runImages {
+		imagesToPush = append(imagesToPush, image{
+			repo:  path.Join(pushRepo, moduleName),
+			tag:   fmt.Sprintf("%s-%d", moduleName, i),
+			image: runImage,
+		})
+	}
+
+	pushRepoOptions := parseOptions(pushInsecure, pushDisableAuth, pushRegistryCa)
 	for _, imgRef := range imagesToPush {
-		if err := cr.PushImage(imgRef.repo, imgRef.tag, imgRef.image); err != nil {
+		if err := cr.PushImage(imgRef.repo, imgRef.tag, imgRef.image, pushRepoOptions...); err != nil {
 			log.Fatal(err)
 		}
 	}
+}
+
+func parseOptions(insecure, disableAuth bool, registryCa string) []cr.Option {
+	opts := make([]cr.Option, 0)
+	if insecure {
+		opts = append(opts, cr.WithInsecureSchema())
+	}
+	if disableAuth {
+		opts = append(opts, cr.WithDisabledAuth())
+	}
+	if registryCa != "" {
+		opts = append(opts, cr.WithCA(registryCa))
+	}
+	return opts
 }
 
 func parseFlags() {
