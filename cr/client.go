@@ -22,7 +22,7 @@ type client struct {
 	options     *registryOptions
 }
 
-func newClient(repo string, opts ...Option) (*client, error) {
+func newClient(repo string, opts ...Option) *client {
 	regOpts := &registryOptions{}
 
 	for _, opt := range opts {
@@ -30,7 +30,7 @@ func newClient(repo string, opts ...Option) (*client, error) {
 	}
 
 	if !regOpts.withoutAuth {
-		regOpts.authConfig = getKeyChain(repo)
+		regOpts.authKeyChain = getKeyChain(repo)
 	}
 
 	r := &client{
@@ -38,7 +38,7 @@ func newClient(repo string, opts ...Option) (*client, error) {
 		options:     regOpts,
 	}
 
-	return r, nil
+	return r
 }
 
 func getKeyChain(repo string) authn.Keychain {
@@ -51,29 +51,29 @@ func getKeyChain(repo string) authn.Keychain {
 	return authn.DefaultKeychain
 }
 
-func (r *client) Image(imageTag string) (v1.Image, error) {
+func (r *client) fetchImage(imageTag string) (v1.Image, error) {
 	ref, err := r.parseImageReference(imageTag)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Println("pulling image:", ref)
-	return remote.Image(ref, r.getImageOptions()...)
+	return remote.Image(ref, r.imageOptions()...)
 }
 
-func (r *client) PushImage(imageTag string, image v1.Image) error {
+func (r *client) pushImage(imageTag string, image v1.Image) error {
 	ref, err := r.parseImageReference(imageTag)
 	if err != nil {
 		return err
 	}
 	log.Println("uploading image:", ref)
-	return remote.Write(ref, image, r.getImageOptions()...)
+	return remote.Write(ref, image, r.imageOptions()...)
 }
 
-func (r *client) getImageOptions() []remote.Option {
+func (r *client) imageOptions() []remote.Option {
 	imageOptions := make([]remote.Option, 0)
 	if !r.options.withoutAuth {
-		imageOptions = append(imageOptions, remote.WithAuthFromKeychain(r.options.authConfig))
+		imageOptions = append(imageOptions, remote.WithAuthFromKeychain(r.options.authKeyChain))
 	}
 	if r.options.ca != "" {
 		imageOptions = append(imageOptions, remote.WithTransport(getHTTPTransport(r.options.ca)))
@@ -82,11 +82,7 @@ func (r *client) getImageOptions() []remote.Option {
 }
 
 func (r *client) parseImageReference(tag string) (name.Reference, error) {
-	var nameOpts []name.Option
-	if r.options.useHTTP {
-		nameOpts = append(nameOpts, name.Insecure)
-	}
-
+	nameOpts := r.nameOptions()
 	var ref name.Reference
 	var err error
 	switch r.options.useDigest {
@@ -99,6 +95,14 @@ func (r *client) parseImageReference(tag string) (name.Reference, error) {
 		return nil, fmt.Errorf("parsing image ref %q with tag %s: %w", r.registryURL, tag, err)
 	}
 	return ref, nil
+}
+
+func (r *client) nameOptions() []name.Option {
+	var nameOpts []name.Option
+	if r.options.useHTTP {
+		nameOpts = append(nameOpts, name.Insecure)
+	}
+	return nameOpts
 }
 
 func getHTTPTransport(ca string) (transport http.RoundTripper) {

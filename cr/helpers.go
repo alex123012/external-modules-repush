@@ -7,52 +7,67 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"path"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/iancoleman/strcase"
 )
 
-func FetchImage(repo, tag string, opts ...Option) (v1.Image, error) {
-	regCli, err := newClient(repo, opts...)
+func GetAuthConfig(repo string, opts ...Option) (*authn.AuthConfig, string, error) {
+	repoUrl, err := url.Parse("//" + repo)
 	if err != nil {
-		return nil, fmt.Errorf("fetch image error: %v", err)
+		return nil, "", err
+	}
+	repoHost := repoUrl.Host
+	cl := newClient(repo, opts...)
+	ref, err := name.NewRegistry(repoHost, cl.nameOptions()...)
+	if err != nil {
+		return nil, "", err
 	}
 
-	img, err := regCli.Image(tag)
+	auth, err := cl.options.authKeyChain.Resolve(ref)
 	if err != nil {
-		return nil, fmt.Errorf("fetch image error: %v", err)
+		return nil, "", err
 	}
 
-	return img, nil
+	conf, err := auth.Authorization()
+	return conf, repoHost, err
 }
 
 func PushImage(repo, tag string, image v1.Image, opts ...Option) error {
-	r, err := newClient(repo, opts...)
-	if err != nil {
-		return err
-	}
-
-	if err := r.PushImage(tag, image); err != nil {
+	r := newClient(repo, opts...)
+	if err := r.pushImage(tag, image); err != nil {
 		return err
 	}
 	return nil
 }
 
+func fetchImage(repo, tag string, opts ...Option) (v1.Image, error) {
+	regCli := newClient(repo, opts...)
+	img, err := regCli.fetchImage(tag)
+	if err != nil {
+		return nil, fmt.Errorf("fetch image error: %v", err)
+	}
+	return img, nil
+}
+
 func FetchModuleReleaseImage(repo, moduleName, releaseChannel string, opts ...Option) (v1.Image, error) {
-	return FetchImage(path.Join(repo, moduleName, "release"), strcase.ToKebab(releaseChannel), opts...)
+	return fetchImage(path.Join(repo, moduleName, "release"), strcase.ToKebab(releaseChannel), opts...)
 }
 
 func FetchModuleListingImage(repo, moduleName string, opts ...Option) (v1.Image, error) {
-	return FetchImage(repo, moduleName, opts...)
+	return fetchImage(repo, moduleName, opts...)
 }
 
-func FetchModuleImages(repo, moduleName, moduleVersion string, opts ...Option) (v1.Image, error) {
+func FetchModuleImage(repo, moduleName, moduleVersion string, opts ...Option) (v1.Image, error) {
 	imageRepo := path.Join(repo, moduleName)
-	moduleImage, err := FetchImage(imageRepo, moduleVersion, opts...)
+	moduleImage, err := fetchImage(imageRepo, moduleVersion, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -60,11 +75,7 @@ func FetchModuleImages(repo, moduleName, moduleVersion string, opts ...Option) (
 }
 
 func FetchModuleRunImages(repo, moduleName string, img v1.Image, opts ...Option) (map[string]v1.Image, error) {
-	regCli, err := newClient(path.Join(repo, moduleName), opts...)
-	if err != nil {
-		return nil, fmt.Errorf("error generating client for registry: %v", err)
-	}
-
+	regCli := newClient(path.Join(repo, moduleName), opts...)
 	imagesFileName := "images_digests.json"
 	if regCli.options.useDigest {
 		imagesFileName = "images_digests.json"
@@ -90,7 +101,7 @@ func FetchModuleRunImages(repo, moduleName string, img v1.Image, opts ...Option)
 
 	runImages := make(map[string]v1.Image, len(TagsOrDigestsMap))
 	for name, tagOrDigest := range TagsOrDigestsMap {
-		runImage, err := regCli.Image(tagOrDigest)
+		runImage, err := regCli.fetchImage(tagOrDigest)
 		if err != nil {
 			return nil, fmt.Errorf("fetch image error: %v", err)
 		}
@@ -108,7 +119,7 @@ type moduleReleaseMetadata struct {
 	Version *semver.Version `json:"version"`
 }
 
-func FetchModuleReleaseImageMetadata(img v1.Image) (string, error) {
+func ModuleReleaseImageMetadata(img v1.Image) (string, error) {
 	buf := bytes.NewBuffer(nil)
 	var meta moduleReleaseMetadata
 	layers, err := img.Layers()

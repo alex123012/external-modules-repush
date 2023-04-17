@@ -3,11 +3,11 @@ package cr
 import "github.com/google/go-containerregistry/pkg/authn"
 
 type registryOptions struct {
-	ca          string
-	useHTTP     bool
-	withoutAuth bool
-	useDigest   bool
-	authConfig  authn.Keychain
+	ca           string
+	useHTTP      bool
+	withoutAuth  bool
+	useDigest    bool
+	authKeyChain authn.Keychain
 }
 
 type Option func(options *registryOptions)

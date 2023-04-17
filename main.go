@@ -6,8 +6,10 @@ import (
 	"log"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/alex123012/external-modules-transfer/cr"
+	"github.com/alex123012/external-modules-transfer/templates"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 )
 
@@ -45,12 +47,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	moduleVersion, err := cr.FetchModuleReleaseImageMetadata(moduleReleaseImage)
+	moduleVersion, err := cr.ModuleReleaseImageMetadata(moduleReleaseImage)
 	if err != nil {
 		log.Fatal(fmt.Errorf("fetch release metadata error: %v", err))
 	}
 
-	moduleImage, err := cr.FetchModuleImages(pullRepo, moduleName, moduleVersion, pullRepoOptions...)
+	moduleImage, err := cr.FetchModuleImage(pullRepo, moduleName, moduleVersion, pullRepoOptions...)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -94,6 +96,10 @@ func main() {
 		if err := cr.PushImage(imgRef.repo, imgRef.tag, imgRef.image, pushRepoOptions...); err != nil {
 			log.Fatal(err)
 		}
+	}
+
+	if err := renderTemplates(moduleName, pushRepo, releaseChannel, pushRepoOptions...); err != nil {
+		log.Fatal(err)
 	}
 }
 
@@ -151,4 +157,23 @@ func parseFlags() {
 	case releaseChannel:
 		log.Fatal("no release channel provided")
 	}
+}
+
+func renderTemplates(name, repo, releaseChannel string, opts ...cr.Option) error {
+	moduleSource, err := templates.RenderExternalModuleSource(name, repo, releaseChannel, opts...)
+	if err != nil {
+		return err
+	}
+	moduleConfig, err := templates.RenderModuleConfig(name)
+	if err != nil {
+		return err
+	}
+	builder := strings.Builder{}
+	builder.WriteString("\n\n")
+	builder.WriteString(moduleSource)
+	builder.WriteString("\n")
+	builder.WriteString(moduleConfig)
+	builder.WriteString("\n\n")
+	fmt.Println(builder.String())
+	return nil
 }
