@@ -28,95 +28,6 @@ var (
 	pushRegistryCa        string
 )
 
-type image struct {
-	repo  string
-	tag   string
-	image v1.Image
-}
-
-func main() {
-	parseFlags()
-	pullRepoOptions := parseOptions(pullInsecure, pullDisableAuth, pullRegistryCa)
-	moduleListingImage, err := cr.FetchModuleListingImage(pullRepo, moduleName, pullRepoOptions...)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	moduleReleaseImage, err := cr.FetchModuleReleaseImage(pullRepo, moduleName, releaseChannel, pullRepoOptions...)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	moduleVersion, err := cr.ModuleReleaseImageMetadata(moduleReleaseImage)
-	if err != nil {
-		log.Fatal(fmt.Errorf("fetch release metadata error: %v", err))
-	}
-
-	moduleImage, err := cr.FetchModuleImage(pullRepo, moduleName, moduleVersion, pullRepoOptions...)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if pullRunImageUseDigest {
-		pullRepoOptions = append(pullRepoOptions, cr.WithUseDigest())
-	}
-
-	runImages, err := cr.FetchModuleRunImages(pullRepo, moduleName, moduleImage, pullRepoOptions...)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	imagesToPush := []image{
-		{
-			repo:  pushRepo,
-			tag:   moduleName,
-			image: moduleListingImage,
-		},
-		{
-			repo:  path.Join(pushRepo, moduleName, "release"),
-			tag:   releaseChannel,
-			image: moduleReleaseImage,
-		},
-		{
-			repo:  path.Join(pushRepo, moduleName),
-			tag:   moduleVersion,
-			image: moduleImage,
-		},
-	}
-
-	for tag, runImage := range runImages {
-		imagesToPush = append(imagesToPush, image{
-			repo:  path.Join(pushRepo, moduleName),
-			tag:   tag,
-			image: runImage,
-		})
-	}
-
-	pushRepoOptions := parseOptions(pushInsecure, pushDisableAuth, pushRegistryCa)
-	for _, imgRef := range imagesToPush {
-		if err := cr.PushImage(imgRef.repo, imgRef.tag, imgRef.image, pushRepoOptions...); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if err := renderTemplates(moduleName, pushRepo, releaseChannel, pushRepoOptions...); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func parseOptions(insecure, disableAuth bool, registryCa string) []cr.Option {
-	opts := make([]cr.Option, 0)
-	if insecure {
-		opts = append(opts, cr.WithInsecureSchema())
-	}
-	if disableAuth {
-		opts = append(opts, cr.WithDisabledAuth())
-	}
-	if registryCa != "" {
-		opts = append(opts, cr.WithCA(registryCa))
-	}
-	return opts
-}
-
 func parseFlags() {
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
@@ -157,6 +68,111 @@ func parseFlags() {
 	case releaseChannel:
 		log.Fatal("no release channel provided")
 	}
+}
+
+type image struct {
+	repo  string
+	tag   string
+	image v1.Image
+}
+
+func main() {
+	parseFlags()
+
+	pullRepoOptions := parseOptions(pullInsecure, pullDisableAuth, pullRegistryCa)
+	imagesToPush, err := pullImages(pullRepo, pushRepo, moduleName, releaseChannel, pullRunImageUseDigest, pullRepoOptions...)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pushRepoOptions := parseOptions(pushInsecure, pushDisableAuth, pushRegistryCa)
+	if err := pushImages(imagesToPush, pushRepoOptions...); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := renderTemplates(moduleName, pushRepo, releaseChannel, pushRepoOptions...); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func parseOptions(insecure, disableAuth bool, registryCa string) []cr.Option {
+	opts := make([]cr.Option, 0)
+	if insecure {
+		opts = append(opts, cr.WithInsecureSchema())
+	}
+	if disableAuth {
+		opts = append(opts, cr.WithDisabledAuth())
+	}
+	if registryCa != "" {
+		opts = append(opts, cr.WithCA(registryCa))
+	}
+	return opts
+}
+
+func pullImages(pullRepo, pushRepo, moduleName, releaseChannel string, pullRunImageUseDigest bool, opts ...cr.Option) ([]image, error) {
+	moduleListingImage, err := cr.FetchModuleListingImage(pullRepo, moduleName, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	moduleReleaseImage, err := cr.FetchModuleReleaseImage(pullRepo, moduleName, releaseChannel, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	moduleVersion, err := cr.ModuleReleaseImageMetadata(moduleReleaseImage)
+	if err != nil {
+		return nil, fmt.Errorf("fetch release metadata error: %v", err)
+	}
+
+	moduleImage, err := cr.FetchModuleImage(pullRepo, moduleName, moduleVersion, opts...)
+	if err != nil {
+		return nil, err
+	}
+	if pullRunImageUseDigest {
+		opts = append(opts, cr.WithUseDigest())
+	}
+
+	runImages, err := cr.FetchModuleRunImages(pullRepo, moduleName, moduleImage, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	imagesToPush := []image{
+		{
+			repo:  pushRepo,
+			tag:   moduleName,
+			image: moduleListingImage,
+		},
+		{
+			repo:  path.Join(pushRepo, moduleName, "release"),
+			tag:   releaseChannel,
+			image: moduleReleaseImage,
+		},
+		{
+			repo:  path.Join(pushRepo, moduleName),
+			tag:   moduleVersion,
+			image: moduleImage,
+		},
+	}
+
+	for tag, runImage := range runImages {
+		imagesToPush = append(imagesToPush, image{
+			repo:  path.Join(pushRepo, moduleName),
+			tag:   tag,
+			image: runImage,
+		})
+	}
+	return imagesToPush, nil
+}
+
+func pushImages(imagesToPush []image, pushRepoOptions ...cr.Option) error {
+	for _, imgRef := range imagesToPush {
+		if err := cr.PushImage(imgRef.repo, imgRef.tag, imgRef.image, pushRepoOptions...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func renderTemplates(name, repo, releaseChannel string, opts ...cr.Option) error {
