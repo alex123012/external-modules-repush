@@ -76,7 +76,7 @@ func FetchModuleImage(repo, moduleName, moduleVersion string, opts ...Option) (v
 
 func FetchModuleRunImages(repo, moduleName string, img v1.Image, opts ...Option) (map[string]v1.Image, error) {
 	regCli := newClient(path.Join(repo, moduleName), opts...)
-	imagesFileName := "images_digests.json"
+	imagesFileName := "images_tags.json"
 	if regCli.options.useDigest {
 		imagesFileName = "images_digests.json"
 	}
